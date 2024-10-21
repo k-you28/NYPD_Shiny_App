@@ -3,7 +3,7 @@ library(readr)
 library(shiny)
 library(ggplot2)
 
-NYPD_Arrests <- read_csv("NYPD_Arrests_Data_Reduced.csv") %>%
+NYPD_Arrests <- read_csv("NYPD_Arrests_Data_2020_to_2023.csv") %>%
   mutate(ARREST_DATE = as.Date(ARREST_DATE, format = "%m/%d/%Y"))
 
 ui <- fluidPage(
