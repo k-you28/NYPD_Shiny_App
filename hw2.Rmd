@@ -1,0 +1,113 @@
+---
+title: "hw2"
+output: html_document
+date: "2024-10-13"
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(readr)
+library(shiny)
+library(ggplot2)
+```
+
+```{r}
+
+NYPD_Arrests <- read_csv("NYPD_Arrests_Data_Reduced.csv") %>%
+  mutate(ARREST_DATE = as.Date(ARREST_DATE, format = "%m/%d/%Y"))
+
+ui <- fluidPage(
+  titlePanel("NYPD Arrests - Interactive Visualization"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("offense", "Select Offense Type:", 
+                  choices = NULL), 
+      
+      checkboxGroupInput("borough", "Select Borough(s):", 
+                         choices = c("Bronx" = "B", 
+                                     "Staten Island" = "S", 
+                                     "Brooklyn" = "K", 
+                                     "Manhattan" = "M", 
+                                     "Queens" = "Q"),
+                         selected = c("B", "S", "K", "M", "Q")),
+      
+      dateRangeInput("dateRange", "Select Arrest Date Range:",
+                     start = NULL, 
+                     end = NULL) 
+    ),
+    
+    mainPanel(
+      plotOutput("arrestPlot"),
+      textOutput("summaryText")
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  observe({
+    offense_choices <- NYPD_Arrests %>%
+      group_by(OFNS_DESC) %>%
+      summarise(count = n()) %>%
+      filter(count >= 500) %>%
+      pull(OFNS_DESC) %>%
+      na.omit()
+    
+    updateSelectInput(session, "offense", choices = offense_choices, 
+                      selected = offense_choices[1])
+  })
+  
+  observe({
+    updateDateRangeInput(session, "dateRange", 
+                         start = min(NYPD_Arrests$ARREST_DATE, na.rm = TRUE), 
+                         end = max(NYPD_Arrests$ARREST_DATE, na.rm = TRUE))
+  })
+  
+  filteredData <- reactive({
+    validate(
+      need(input$dateRange[1] <= input$dateRange[2], 
+           "Error: Start date must be earlier than or equal to the end date.")
+    )
+    NYPD_Arrests %>%
+      filter(
+        OFNS_DESC == input$offense,
+        ARREST_BORO %in% input$borough,
+        ARREST_DATE >= input$dateRange[1] & ARREST_DATE <= input$dateRange[2]
+      )
+  })
+  
+  weeklyData <- reactive({
+    filteredData() %>%
+      mutate(week = cut(ARREST_DATE, breaks = "week")) %>%
+      group_by(week) %>%
+      summarise(weekly_arrests = n()) %>%
+      ungroup()
+  })
+  
+  output$arrestPlot <- renderPlot({
+    
+      validate(
+    need(nrow(filteredData()) > 0, "No data available for the selected filters.")
+  )
+    ggplot(filteredData(), aes(x = ARREST_DATE)) +
+      geom_histogram(aes(y = ..count..), binwidth = 7, fill = "blue", alpha = 0.7) +
+      geom_smooth(data = weeklyData(), aes(x = as.Date(week), y = weekly_arrests), 
+                  method = "loess", color = "red", fill = "red", alpha = 0.3, size = 1, se = TRUE) +
+      labs(
+        title = paste("Weekly Arrests with Smoothed Trend for", input$offense),
+        x = "Date", y = "Number of Arrests"
+      ) +
+      theme_minimal()
+  })
+  
+  output$summaryText <- renderText({
+    paste("Total arrests in the selected range:", nrow(filteredData()))
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+
+```
